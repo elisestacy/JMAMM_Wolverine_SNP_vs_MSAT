@@ -5,3 +5,17 @@ Journal of Mammalogy manuscript code repository
 Authors: Elise M. Stacy, Martin D. Robards, Thomas S. Jung, Piia M. Kukka, Jack Sullivan, Paul A. Hohenlohe, and Lisette P. Waits
 
 #### Primary Contact: Elise Stacy, email: stacy.elise.m@gmail.com
+
+### RAD Seq data processing
+
+### Program STRUCTURE
+
+### R code
+#### STRUCTURE visualization
+
+#### Genetic Diversity and Fst
+
+#### Isolation by distance mantel tests
+
+### Data Availability
+Dryad -
