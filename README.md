@@ -6,11 +6,15 @@ Authors: Elise M. Stacy, Martin D. Robards, Thomas S. Jung, Piia M. Kukka, Jack 
 
 #### Primary Contact: Elise Stacy, email: stacy.elise.m@gmail.com
 
-### RAD Seq data processing
+## Description of scripts
+### RAD Seq data processing - RAD seq following "BestRAD" protocol excluding the targeted bait capture with modification to use biotinylated adapters (Ali et al. 2016) using SbfI enzyme
+flip_trim: Custom Hohenlohe lab script for recognizing cutsites, barcodes, and trimming
+
 
 ### Program STRUCTURE
 
 ### R code
+
 #### STRUCTURE visualization
 
 #### Genetic Diversity and Fst
