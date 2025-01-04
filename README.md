@@ -15,6 +15,8 @@ snp_outliers_Ho_removed.RMD
 ### Program STRUCTURE
 
 ### R code
+#### Linkage disequilibrium and Hardy-weinberg equilibrium calculation
+
 #### STRUCTURE visualization
 
 #### Genetic Diversity and Fst
