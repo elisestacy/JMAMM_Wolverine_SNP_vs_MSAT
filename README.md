@@ -10,8 +10,9 @@ Authors: Elise M. Stacy, Martin D. Robards, Thomas S. Jung, Piia M. Kukka, Jack 
 flip_trim: Custom Hohenlohe lab script for recognizing cutsites, barcodes, and trimming
 filter_loop_range: Custom script to automate iterative filtering of individual and locus level missingness similar to approach in O’Leary et al. (2018) 
 
-### R code for outliers and X removed, related removed
-
+### R code for outliers and high observed heterozygosity removed, and related removed
+snp_outliers_Ho_removed.RMD
+snp_microsat_related.RMD
 ### Program STRUCTURE
 
 ### R code
