@@ -25,10 +25,10 @@ Following tutorial: https://bcm-uga.github.io/pcadapt/articles/pcadapt.html
 ##Reading genotype data and sample information 
 ```{r}
 # Read in vcf and convert to lfmm with LEA package
-vcf <- read.vcfR("SNPs/data/AK_YK/051923_iterative_filtering/gulo_snp_all_thinned.vcf")
+vcf <- read.vcfR("gulo_snp_all_thinned.vcf")
 snp_IDs <- extract.gt(vcf) %>% as.data.frame() %>% colnames() %>% as.data.frame()
 
-lfmm <- vcf2lfmm("SNPs/data/AK_YK/051923_iterative_filtering/gulo_snp_all_thinned.vcf")
+lfmm <- vcf2lfmm("gulo_snp_all_thinned.vcf")
 
 filename <- read.pcadapt(lfmm, type = "lfmm")
 
