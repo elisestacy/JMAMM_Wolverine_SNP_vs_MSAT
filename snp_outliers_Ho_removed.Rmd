@@ -1,0 +1,294 @@
+---
+title: "snp_outlier_Ho_removed"
+author: "Elise Stacy"
+date: "2023-10-07"
+output: html_document
+---
+
+# Alaska and Yukon SNP dataset outlier locus and high He filtering
+## Outlier locus detection using PCAdapt, Tess3r, and LEA
+###Load packages
+```{r}
+library(pcadapt)
+library(LEA)
+library(vcfR)
+library(dplyr)
+library(tidyr)
+library(adegenet)
+library(RColorBrewer)
+library(tess3r)
+library(maps)
+library(rworldmap)
+```
+# PCAdapt
+Following tutorial: https://bcm-uga.github.io/pcadapt/articles/pcadapt.html
+##Reading genotype data and sample information 
+```{r}
+# Read in vcf and convert to lfmm with LEA package
+vcf <- read.vcfR("SNPs/data/AK_YK/051923_iterative_filtering/gulo_snp_all_thinned.vcf")
+snp_IDs <- extract.gt(vcf) %>% as.data.frame() %>% colnames() %>% as.data.frame()
+
+lfmm <- vcf2lfmm("SNPs/data/AK_YK/051923_iterative_filtering/gulo_snp_all_thinned.vcf")
+
+filename <- read.pcadapt(lfmm, type = "lfmm")
+
+
+snp_sample_data <- read.csv("snp_sample_data.csv") #Exact lat/lon location data sensitive and available with error added upon request
+regions <- snp_sample_data$Region
+```
+##Choosing the number K of Principal Components
+```{r}
+x <- pcadapt(input = filename, K = 20)
+plot(x, option = "screeplot")
+
+#variance explained per PC
+((x$singular.values)^2)*100
+```
+## Plot PC1 against PC2 
+```{r}
+plot(x, option = "scores", pop = regions, col = brewer.pal(n=18, name = "Dark2"))
+```
+## Plot PC2 against PC3
+```{r}
+plot(x, option = "scores", i = 2, j = 3, pop = regions, col = brewer.pal(n=18, name = "Set1"))
+```
+
+```{r}
+plot(x , option = "manhattan")
+plot(x, option = "qqplot")
+hist(x$pvalues, xlab = "p-values", main = NULL, breaks = 20, col = "orange")
+plot(x, option = "stat.distribution")
+```
+## Choosing cutoff for outlier detection
+### B-H procedure
+```{r}
+padj <- p.adjust(x$pvalues,method="BH")
+alpha <- 0.05
+outliers <- which(padj < alpha)
+length(outliers)
+
+pcadapt_outliers <- outliers
+```
+### Manhattan plot of pcadapt outliers
+```{r}
+plot(x , option = "manhattan")
+
+pvalues <- x$pvalues
+
+plot(-log10(pvalues), pch = 19, col = "blue", cex = .5)
+points(outliers, -log10(x$pvalues[outliers]), col = "red")
+
+```
+# Tess3r
+Following https://bcm-uga.github.io/TESS3_encho_sen/articles/main-vignette.html 
+## Format data
+```{r}
+genotypes <- read.lfmm(lfmm) # read lfmm format to genotypes object
+snp_sample_data <- read.csv("snp_sample_data.csv") #Exact lat/lon location data sensitive and available with error added upon request
+sample_locations <- read.csv("all_samples_with_lat_lon.csv") #This csv not provided, location data required for tess3r outlier detection method - location data available upon request
+
+snp_locations <- left_join(snp_sample_data, sample_locations, by = "ID")
+
+coords = cbind(snp_locations$Longitude, snp_locations$Latitude)
+
+genos_t3r <- as.data.frame(genotypes)
+genos_t3r[genos_t3r == "9"] <- "NA" #format missing alleles as NA
+```
+## Plot location data
+```{r}
+plot(coords, pch = 19, cex = .5, 
+     xlab = "Longitude", ylab = "Latitude")
+map(add = T, interior = F)
+```
+## Run tess3R population clustering
+```{r}
+tess3.obj <- tess3(X = genos_t3r, coord = coords, K = 1:10, rep = 10, 
+                   method = "projected.ls", ploidy = 2) 
+```
+
+```{r}
+plot(tess3.obj, pch = 19, col = "blue",
+     xlab = "Number of ancestral populations",
+     ylab = "Cross-validation score")
+```
+
+```{r}
+# retrieve tess3 Q matrix for K = 6 clusters 
+q.matrix <- qmatrix(tess3.obj, K = 6)
+# STRUCTURE-like barplot for the Q-matrix 
+barplot(q.matrix, border = NA, space = 0, 
+        xlab = "Individuals", ylab = "Ancestry proportions", 
+        main = "Ancestry matrix") -> bp
+```
+
+```{r}
+my.colors <- c("#CC99C9","#9EC1CF","#9EE09E","#FDFD97","#FEB144","#FF6663")
+
+my.palette <- CreatePalette(my.colors, 6)
+barplot(q.matrix, border = NA, space = 0, 
+        main = "Ancestry matrix", 
+        xlab = "Individuals", ylab = "Ancestry proportions", 
+        col.palette = my.palette) -> bp
+axis(1, at = 1:nrow(q.matrix), labels = bp$order, las = 3, cex.axis = .4) 
+```
+
+```{r}
+plot(q.matrix, coords, method = "map.max", interpol = FieldsKrigModel(10),  
+     main = "Ancestry coefficients",
+     xlab = "Longitude", ylab = "Latitude", 
+     resolution = c(300,300), cex = .6, 
+     col.palette = my.palette)
+
+```
+## Outlier loci
+```{r}
+# retrieve tess3 results for K = x 
+p.values <- pvalue(tess3.obj, K = 6)
+```
+
+```{r}
+hist(p.values, col = "lightblue") 
+```
+```{r}
+# Benjamini-Hochberg algorithm
+L = length(p.values)
+fdr.level = 0.05
+w = which(sort(p.values) < fdr.level * (1:L)/L)
+candidates = order(p.values)[w]
+length(candidates)
+
+
+tess3r_outliers <- candidates
+L
+(1:L)/L
+
+head(fdr.level * (1:L)/L)
+
+head(sort(p.values))
+```
+### Manhattan plot 
+```{r}
+plot(p.values, main = "Manhattan plot", 
+     xlab = "Locus id", 
+     ylab = "-log10(P-values)",
+     cex = .9, col = "grey")
+points(candidates, -log10(p.values)[candidates], 
+       pch = 19, cex = .9, col = "blue")
+```
+# LEA 
+Following https://bioconductor.org/packages/devel/bioc/vignettes/LEA/inst/doc/LEA.pdf
+```{r}
+genos_lea <- lfmm2geno(lfmm)
+
+project = NULL
+project = snmf(genos_lea,
+K = 1:10,
+entropy = TRUE,
+repetitions = 10,
+project = "new")
+```
+### Plot cross-entropy criterion for all runs in the snmf project
+```{r}
+plot(project, col = "blue", pch = 19, cex = 1.2)
+```
+# Select the best run for K = X clusters
+```{r}
+best = which.min(cross.entropy(project, K = 6))
+my.colors <- c("tomato", "lightblue",
+"olivedrab", "gold", "blue", "orange","purple")
+barchart(project, K = 6, run = best,
+border = NA, space = 0,
+col = my.colors,
+xlab = "Individuals",
+ylab = "Ancestry proportions",
+main = "Ancestry matrix") -> bp
+axis(1, at = 1:length(bp$order),
+labels = bp$order, las=1,
+cex.axis = .4)
+```
+### Genome scan for selection: population differentiation tests
+```{r}
+p = snmf.pvalues(project,
+entropy = TRUE,
+ploidy = 2,
+K = 6)
+pvalues = p$pvalues
+par(mfrow = c(2,1))
+hist(pvalues, col = "orange")
+plot(-log10(pvalues), pch = 19, col = "blue", cex = .5)
+```
+```{r}
+alpha <- 0.05
+print(paste("Expected FDR:", alpha))
+L = length(pvalues)
+# return a list of candidates with expected FDR alpha.
+# Benjamini-Hochberg's algorithm:
+w = which(sort(pvalues) < alpha * (1:L) / L)
+candidates = order(pvalues)[w]
+# estimated FDR and True Positive Rate
+Lc = length(candidates)
+
+LEA_outliers <- candidates
+```
+
+```{r}
+p = snmf.pvalues(project,
+entropy = TRUE,
+ploidy = 2,
+K = 4)
+pvalues = p$pvalues
+
+plot(-log10(pvalues), pch = 19, col = "blue", cex = .5)
+points(candidates, -log10(p$pvalues[candidates]), col = "red")
+
+```
+# Outlier comparisson
+```{r}
+# Create data frames for each list with a label column
+df1 <- data.frame(Locus = pcadapt_outliers, Method = "pcadapt")
+df2 <- data.frame(Locus = tess3r_outliers, Method = "tess3r")
+df3 <- data.frame(Locus = LEA_outliers, Method = "LEA")
+
+# Combine the data frames into one
+outliers_df <- rbind(df1, df2, df3)
+
+unique_outliers <- outliers_df$Locus %>% unique() %>% sort(decreasing = FALSE)
+locus_ids <- vcf@fix[,3]
+
+# Extract locus IDs corresponding outlier loci number identifiers
+outlier_locus_ids <- locus_ids[unique_outliers]
+```
+## Venn diagram of outlier detection methods
+```{r}
+library(ggvenn)
+
+x <- list(
+  pcadapt = pcadapt_outliers, 
+  tess3r = tess3r_outliers, 
+  LEA = LEA_outliers
+  )
+
+ggvenn(
+  x, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+```
+
+# Observed heterozygosity greater than 0.5
+```{r}
+genind <- vcfR2genind(vcf)
+
+genind_summ <- summary(genind)
+
+Ho_snp <- genind_summ$Hobs %>% as.data.frame()
+colnames(Ho_snp) <- c("Ho")
+Ho_snp$Locus <- rownames(Ho_snp)
+
+boxplot(Ho_snp$Ho)
+
+Ho_greater_0.5 <- Ho_snp %>% filter(Ho > 0.5)
+
+# Vector of loci with Ho greater than 0.5
+high_Ho_locus_ids <- Ho_greater_0.5$Locus
+```
