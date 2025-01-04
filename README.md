@@ -11,7 +11,7 @@ flip_trim: Custom Hohenlohe lab script for recognizing cutsites, barcodes, and t
 filter_loop_range: Custom script to automate iterative filtering of individual and locus level missingness similar to approach in O’Leary et al. (2018) 
 
 ### R code
-### Outlier detection and high observed heterozygosity removed
+#### Outlier detection and high observed heterozygosity removed
 snp_outliers_Ho_removed.RMD
 #### Linkage disequilibrium and Hardy-weinberg equilibrium calculation
 
