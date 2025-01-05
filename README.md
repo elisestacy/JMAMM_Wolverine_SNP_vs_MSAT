@@ -27,5 +27,5 @@ PCA_Structure_visualization.RMD
 
 ### Isolation by distance mantel tests
 
-#### Genotype Data Availability
+## Genotype Data Availability
 Dryad - DOI: 10.5061/dryad.crjdfn3dz
