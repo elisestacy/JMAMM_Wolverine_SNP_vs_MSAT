@@ -1,0 +1,61 @@
+---
+title: "LD_HWE"
+author: "Elise Stacy"
+date: "2025-01-04"
+output: html_document
+---
+# Microsatellites LD and HWE
+## Load packages
+```{r}
+library(adegenet)
+library(genepop)
+library(graph4lg)
+library(tidyr)
+library(dplyr)
+```
+
+## Import data
+```{r}
+msat_df <- read.csv("gulo_msat_related_removed.csv")
+sample_data <- read.csv("all_samples.csv")
+
+#reformat for genind import
+out <- msat_df[1]
+out[paste("locus",1:12)] <- lapply(seq(2, ncol(msat_df), 2), function(i) do.call(paste, msat_df[i:(i+1)]))
+msat_df_re <- out
+ 
+msat_genind <- df2genind(msat_df_re[2:13], ind.names = msat_df_re$ID, NA.char = "-1", sep =" ")
+
+msat_metadata <- sample_data %>% filter(ID %in% indNames(msat_genind)) %>% arrange(match(ID, indNames(msat_genind)))
+
+msat_genind$pop <- as.factor(msat_metadata$Region)
+msat_genpop <- seppop(msat_genind) #separates into populations and orders alphabetically
+msat_genind <- repool(msat_genpop) #recombines with new order 
+```
+
+```{r}
+msat_genepop <- graph4lg::genind_to_genepop(msat_genind, output = "data.frame")
+write.table(msat_genepop, "msat_genepop.txt", quote = F, row.names = F) #need to delete first two lines of msat_genepop.txt produced
+
+test_LD(
+"msat_genepop.txt",
+outputFile = "msat_linkage_diseq",
+settingsFile = "",
+dememorization = 10000,
+batches = 100,
+iterations = 5000,
+verbose = interactive()
+)
+
+test_HW(
+"msat_genepop.txt",
+which = "Proba",
+outputFile = "msat_HWE",
+settingsFile = "",
+enumeration = FALSE,
+dememorization = 10000,
+batches = 20,
+iterations = 5000,
+verbose = interactive()
+)
+```
