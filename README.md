@@ -14,7 +14,7 @@ filter_loop_range: Custom script to automate iterative filtering of individual a
 #### SNP outlier detection and high observed heterozygosity removed
 snp_outliers_Ho_removed.RMD
 #### Microsatellite loci linkage disequilibrium and Hardy-weinberg equilibrium
-
+LD_HWE.RMD
 #### STRUCTURE results visualization
 
 #### Genetic Diversity and Fst
