@@ -15,17 +15,17 @@ msat_structure_order, msat_r_structure_order, and snp_structure_order: Labels to
 flip_trim: Custom Hohenlohe lab script for recognizing cutsites, barcodes, and trimming
 filter_loop_range: Custom script to automate iterative filtering of individual and locus level missingness similar to approach in O’Leary et al. (2018) 
 
-### R code
-#### SNP outlier detection and high observed heterozygosity removed
+## R code
+### SNP outlier detection and high observed heterozygosity removed
 snp_outliers_Ho_removed.RMD
-#### Microsatellite loci linkage disequilibrium and Hardy-weinberg equilibrium
+### Microsatellite loci linkage disequilibrium and Hardy-weinberg equilibrium
 LD_HWE.RMD
-#### PCA calculation and STRUCTURE results visualization
+### PCA calculation and STRUCTURE results visualization
 Structure results files available upon request
 PCA_Structure_visualization.RMD
-#### Genetic Diversity and Fst
+### Genetic Diversity and Fst
 
-#### Isolation by distance mantel tests
+### Isolation by distance mantel tests
 
-### Data Availability
-Dryad -
+#### Genotype Data Availability
+Dryad - DOI: 10.5061/dryad.crjdfn3dz
