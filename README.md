@@ -5,6 +5,11 @@ Authors: Elise M. Stacy, Martin D. Robards, Thomas S. Jung, Piia M. Kukka, Jack 
 
 #### Primary Contact: Elise Stacy, email: stacy.elise.m@gmail.com
 
+## Description of CSVs
+all_samples: All sample IDs, region, and sex - exact location data sensitive and available with error added upon request
+snp_sample_data: SNP genotyped sample IDs, region, and sex
+msat_structure_order, msat_r_structure_order, and snp_structure_order: Labels to order samples for display in structure barplots, including for microsatellite results, microsatellites with related individuals kept in the dataset, and the SNP dataset. 
+
 ## Description of scripts
 ### RAD Seq data processing - RAD seq following "BestRAD" protocol excluding the targeted bait capture with modification to use biotinylated adapters (Ali et al. 2016) using SbfI enzyme
 flip_trim: Custom Hohenlohe lab script for recognizing cutsites, barcodes, and trimming
@@ -16,7 +21,8 @@ snp_outliers_Ho_removed.RMD
 #### Microsatellite loci linkage disequilibrium and Hardy-weinberg equilibrium
 LD_HWE.RMD
 #### PCA calculation and STRUCTURE results visualization
-
+Structure results files available upon request
+PCA_Structure_visualization.RMD
 #### Genetic Diversity and Fst
 
 #### Isolation by distance mantel tests
