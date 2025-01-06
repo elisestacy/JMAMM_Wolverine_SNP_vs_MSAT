@@ -24,8 +24,8 @@ LD_HWE.RMD
 Structure results files available upon request
 PCA_Structure_visualization.RMD
 ### Genetic Diversity and Fst
-
+GD_Fst.RMD
 ### Isolation by distance mantel tests
-
+IBD.RMD
 ## Genotype Data Availability
 Dryad - DOI: 10.5061/dryad.crjdfn3dz
