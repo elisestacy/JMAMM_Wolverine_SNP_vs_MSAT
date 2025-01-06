@@ -1,0 +1,387 @@
+---
+title: "IBD"
+author: "Elise Stacy"
+date: "2025-01-05"
+output: html_document
+---
+# Load packages
+```{r warning = FALSE, message = FALSE}
+library(vcfR)
+library(adegenet)
+library(vegan)
+
+library(dplyr)
+```
+# Load data
+```{r warning = FALSE, message = FALSE}
+# All sample data
+msat_df <- read.csv("gulo_msat_related_removed.csv")
+sample_data <- read.csv("all_samples.csv")
+
+#reformat for genind import
+out <- msat_df[1]
+out[paste("locus",1:12)] <- lapply(seq(2, ncol(msat_df), 2), function(i) do.call(paste, msat_df[i:(i+1)]))
+msat_df_re <- out
+ 
+msat_genind <- df2genind(msat_df_re[2:13], ind.names = msat_df_re$ID, NA.char = "-1", sep =" ")
+
+msat_metadata <- sample_data %>% filter(ID %in% indNames(msat_genind)) %>% arrange(match(ID, indNames(msat_genind)))
+
+msat_genind$pop <- as.factor(msat_metadata$Region)
+msat_genpop <- seppop(msat_genind) #separates into populations and orders alphabetically
+msat_genind <- repool(msat_genpop) #recombines with new order 
+
+#df <- msat_metadata[match(indNames(msat_genind),msat_metadata$ID),] # add coordinate data - exact location data sensitive, available with error added upon request
+#msat_genind$other$lat <- df$Latitude 
+#msat_genind$other$long <- df$Longitude 
+
+# SNP data
+snp_vcf <- read.vcfR("gulo_snp_related_removed.vcf")
+snp_genind <- vcfR2genind(snp_vcf)
+
+indNames(snp_genind) <- str_extract(indNames(snp_genind), ".*(?=_)")
+
+snp_metadata <- sample_data %>% filter(ID %in% indNames(snp_genind)) %>% arrange(match(ID, indNames(snp_genind)))
+
+snp_genind$pop <- as.factor(snp_metadata$Region)
+
+snp_genpop <- seppop(snp_genind) #separates into populations and orders alphabetically
+snp_genind <- repool(snp_genpop) #recombines with new order 
+#df <- snp_metadata[match(indNames(snp_genind),snp_metadata$ID),] # add coordinate data - exact location data sensitive, available with error added upon request
+#snp_genind$other$lat <- df$Latitude
+#snp_genind$other$long <- df$Longitude
+
+# Subset msat data to match snp genotyped samples
+msat_sub_genind <- msat_genind[indNames(snp_genind), ]
+
+# For structure, Fst and He ordering
+region_order <- c("North Alaska","West Alaska", "Kenai Peninsula","Central Alaska","Northeast Alaska","North Yukon", "South Yukon", "Southeast Alaska")
+```
+# Isolation by distance
+## Genetic distance
+Going with just basic R stats function to calculate euclidean distance. Each column is an allele and each individuals has 0, 1, or 2 alleles at each column. Formatted the same for microsatellite and SNP data. The dist function handles missing data by excluding NA values from the pairwise calculation and the sum is scaled up proportionally to the number of columns used.
+```{r warning = FALSE, message = FALSE, fig.show="hold", out.width="33%"}
+# Microsat data
+  df <- msat_genind$tab %>% as.data.frame()
+  df <- cbind(df, cbind("Latitude" = msat_genind$other$lat, "Longitude" = msat_genind$other$long))
+  df_msat <- subset(df, !is.na(Latitude))
+
+  euc_msat <- dist(df_msat[1:78], method = "euclidean") # Calculate distances, select columns w genetic data only
+  hist(euc_msat)
+
+# Microsat subset data
+  msat_sub_genind <- msat_genind[indNames(snp_genind), ]
+  df <- msat_sub_genind$tab %>% as.data.frame()
+  df <- cbind(df, cbind("Latitude" = msat_sub_genind$other$lat, "Longitude" = msat_sub_genind$other$long))
+  df_msat_sub <- subset(df, !is.na(Latitude))
+  
+  euc_msat_sub <- dist(df_msat_sub[1:78], method = "euclidean") # Calculate distances, select columns w genetic data only
+  hist(euc_msat_sub)
+
+# SNP data
+  
+  df <- snp_genind$tab %>% as.data.frame()
+  df <- cbind(df, cbind("Latitude" = snp_genind$other$lat, "Longitude" = snp_genind$other$long))
+  df_snp <- subset(df, !is.na(Latitude))
+  
+  euc_snp <- dist(df_snp[1:8444], method = "euclidean") # Calculate distances
+  hist(euc_snp)
+  
+mean(euc_msat)
+mean(euc_msat_sub)
+mean(euc_snp)
+
+euc_df <- data.frame(msat_sub = euc_msat_sub[lower.tri(euc_msat_sub)])
+euc_df$snp <- euc_snp[lower.tri(euc_snp)]
+
+library(GGally)
+
+ggpairs(euc_df)
+```
+## SNP vs microsat euc dist estimates
+```{r warning = FALSE, message = FALSE, fig.show="hold", out.width="33%"}
+euc_msat_sub_vs_snp <- vegan::mantel(euc_msat_sub, euc_snp, method="pearson", permutations=9999)
+
+euc_msat_sub_vs_snp
+
+plot(euc_msat_sub, euc_snp)
+
+plot(euc_msat_sub, euc_snp, pch=20, cex=1,  
+    xlab="Microsatellite Subset Genetic Distance", ylab="SNP Genetic Distance")
+
+euc_msat_sub
+df_1 <- euc_msat_sub[1:10000] %>% as.data.frame()
+df_2 <- euc_snp[1:10000] %>% as.data.frame()
+
+colnames(df_1) <- c("Msat")
+
+df_1$SNP <- df_2$.
+
+df_1 %>% arrange(desc(Msat))
+df_1 %>% arrange(desc(SNP))
+```
+## Geographic distance
+```{r warning = FALSE, message = FALSE}
+library(geosphere)
+# Microsat
+xy <- df_msat[ ,c("Longitude", "Latitude")]
+distmat <- distm(xy, fun = distGeo) / 1000
+Dgeo_msat <- as.dist(distmat)
+# Microsat subset
+xy <- df_msat_sub[ ,c("Longitude", "Latitude")]
+distmat <- distm(xy, fun = distGeo) / 1000
+Dgeo_msat_sub <- as.dist(distmat)
+# SNP
+xy <- df_snp[ ,c("Longitude", "Latitude")]
+distmat <- distm(xy, fun = distGeo) / 1000
+Dgeo_snp <- as.dist(distmat)
+```
+### Mantel tests
+```{r eval=FALSE}
+EUC_IBD_msat <- vegan::mantel(euc_msat, Dgeo_msat, method="pearson", permutations=9999)
+
+EUC_IBD_msat_sub <- vegan::mantel(euc_msat_sub, Dgeo_msat_sub, method="pearson", permutations=9999)
+
+EUC_IBD_snp <- vegan::mantel(euc_snp, Dgeo_snp, method="pearson", permutations=9999)
+```
+## View mantel results
+```{r warning = FALSE, message = FALSE}
+results_list <- list(EUC_IBD_msat,EUC_IBD_msat_sub, EUC_IBD_snp)
+mantel_tests <- data.frame()
+
+for (result in results_list) {
+mantel_tests <- rbind(mantel_tests, data.frame( data = as.character(result$call$xdis),
+                            mantel_r = result$statistic,
+                            pvalue = result$signif ))
+}
+
+mantel_tests
+```
+### Mantel correlogram
+```{r eval=FALSE}
+# Microsat
+Dgen <- euc_msat
+Dgeo <- Dgeo_msat
+
+correlog_msat <- vegan::mantel.correlog(Dgen, D.geo = Dgeo, nperm=9999)
+
+# Microsat subset
+Dgen <- euc_msat_sub
+Dgeo <- Dgeo_msat_sub
+
+correlog_msat_sub <- vegan::mantel.correlog(Dgen, D.geo = Dgeo, nperm=9999)
+
+# SNP
+Dgen <- euc_snp
+Dgeo <- Dgeo_snp
+
+correlog_snp <- vegan::mantel.correlog(Dgen, D.geo = Dgeo, nperm=9999)
+```
+## View correlogram results
+```{r warning = FALSE, message = FALSE, fig.show="hold", out.width="33%"}
+summary(correlog_msat)
+plot(correlog_msat)
+title("Microsatellite Mantel Correlogram")
+
+summary(correlog_msat_sub)
+plot(correlog_msat_sub)
+title("Microsatellite Subset Mantel Correlogram")
+
+summary(correlog_snp)
+plot(correlog_snp)
+title("SNP Mantel Correlogram")
+
+correlog_msat
+correlog_msat_sub
+correlog_snp
+```
+
+###### Save plots long ways
+```{r warning = FALSE, message = FALSE, fig.show="hold", out.width="33%"}
+## Full microsat
+
+df <- as.data.frame(correlog_msat$mantel.res)
+df <- cbind(df$class.index, df$Mantel.cor, df$`Pr(corrected)`) %>% as.data.frame()
+colnames(df) <- c("Distance Class (Kilometers)", "Mantel Correlation", "Pr.corrected")
+
+# Add a new column for circle shape based on Pr(corrected)
+df <- df %>%
+  mutate(shape = ifelse(Pr.corrected > 0.05, "closed", "open"))
+df <- na.omit(df)
+
+# Create the plot
+p1 <- ggplot(df, aes(x = `Distance Class (Kilometers)`, y = `Mantel Correlation`)) +
+  geom_point(aes(shape = shape, size = .2)) +
+  scale_shape_manual(values=c(1, 16))+
+  geom_hline(yintercept = 0, color = "blue", linetype = "dashed") +
+  geom_path(color = "black") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(hjust = 0.5)) +
+  labs(x = "", y = "") + 
+  scale_x_continuous(breaks=seq(0, 1250, 200)) +
+  ylim(-0.06, 0.14 )  + 
+  theme(legend.position="none") + 
+  ggtitle("Microsatellites") + 
+    theme(plot.title = element_text(size = 13, margin=margin(0,0,20,0)), axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"))
+
+
+## Subset microsat
+
+df <- as.data.frame(correlog_msat_sub$mantel.res)
+df <- cbind(df$class.index, df$Mantel.cor, df$`Pr(corrected)`) %>% as.data.frame()
+colnames(df) <- c("Distance Class (Kilometers)", "Mantel Correlation", "Pr.corrected")
+
+# Add a new column for circle shape based on Pr(corrected)
+df <- df %>%
+  mutate(shape = ifelse(Pr.corrected > 0.05, "closed", "open"))
+df <- na.omit(df)
+
+# Create the plot
+p2 <- ggplot(df, aes(x = `Distance Class (Kilometers)`, y = `Mantel Correlation`)) +
+  geom_point(aes(shape = shape, size = .2)) +
+  scale_shape_manual(values=c(1, 16))+
+  geom_hline(yintercept = 0, color = "blue", linetype = "dashed") +
+  geom_path(color = "black") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(hjust = 0.5)) +
+  labs(x = "", y = "") + 
+  scale_x_continuous(breaks=seq(0, 1250, 200)) +
+  ylim(-0.06, 0.14 )  + 
+  theme(legend.position="none") + 
+  ggtitle("Subset microsatellites") + 
+    theme(plot.title = element_text(size = 13, margin=margin(0,0,20,0)), axis.text.x = element_text(color = "black"), 
+    axis.text.y = element_text(color = "black"))
+
+## SNP
+
+df <- as.data.frame(correlog_snp$mantel.res)
+df <- cbind(df$class.index, df$Mantel.cor, df$`Pr(corrected)`) %>% as.data.frame()
+colnames(df) <- c("Distance Class (Kilometers)", "Mantel Correlation", "Pr.corrected")
+
+# Add a new column for circle shape based on Pr(corrected)
+df <- df %>%
+  mutate(shape = ifelse(Pr.corrected > 0.05, "closed", "open"))
+df <- na.omit(df)
+
+# Create the plot
+p3 <- ggplot(df, aes(x = `Distance Class (Kilometers)`, y = `Mantel Correlation`)) +
+  geom_point(aes(shape = shape, size = .2)) +
+  scale_shape_manual(values=c(1, 16))+
+  geom_hline(yintercept = 0, color = "blue", linetype = "dashed") +
+  geom_path(color = "black") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(hjust = 0.5)) +
+  labs(x = "", y = "") + 
+  scale_x_continuous(breaks=seq(0, 1250, 200)) +
+  ylim(-0.06, 0.14 )  + 
+  theme(legend.position="none") + 
+  ggtitle("SNPs") + 
+    theme(plot.title = element_text(size = 13, margin=margin(0,0,20,0)), axis.text.x = element_text(color = "black"), 
+    axis.text.y = element_text(color = "black"))
+
+
+
+
+jpeg(filename = "output/mantel_correlogram_long.jpg",
+     width = 15, height = 30, units = "cm", res = 600, quality = 600, pointsize = 12)
+
+grid.arrange(p1, p2, p3, ncol=1, left = "Mantel Correlation", bottom = "Distance Class (km)")
+
+dev.off()
+```
+
+###### Save plots wide ways
+```{r warning = FALSE, message = FALSE, fig.show="hold", out.width="33%"}
+## Full microsat
+
+df <- as.data.frame(correlog_msat$mantel.res)
+df <- cbind(df$class.index, df$Mantel.cor, df$`Pr(corrected)`) %>% as.data.frame()
+colnames(df) <- c("Distance Class (Kilometers)", "Mantel Correlation", "Pr.corrected")
+
+# Add a new column for circle shape based on Pr(corrected)
+df <- df %>%
+  mutate(shape = ifelse(Pr.corrected > 0.05, "closed", "open"))
+df <- na.omit(df)
+
+# Create the plot
+p1 <- ggplot(df, aes(x = `Distance Class (Kilometers)`, y = `Mantel Correlation`)) +
+  geom_point(aes(shape = shape, size = .2)) +
+  scale_shape_manual(values=c(1, 16))+
+  geom_hline(yintercept = 0, color = "blue", linetype = "dashed") +
+  geom_path(color = "black") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(hjust = 0.5)) +
+  labs(x = "", y = "") + 
+  scale_x_continuous(breaks=seq(0, 1250, 200)) +
+  ylim(-0.06, 0.14 )  + 
+  theme(legend.position="none") + 
+  ggtitle("Microsatellites") + 
+    theme(plot.title = element_text(size = 13, margin=margin(0,0,20,0)), axis.text.x = element_text(color = "black"), 
+        axis.text.y = element_text(color = "black"))
+
+
+## Subset microsat
+
+df <- as.data.frame(correlog_msat_sub$mantel.res)
+df <- cbind(df$class.index, df$Mantel.cor, df$`Pr(corrected)`) %>% as.data.frame()
+colnames(df) <- c("Distance Class (Kilometers)", "Mantel Correlation", "Pr.corrected")
+
+# Add a new column for circle shape based on Pr(corrected)
+df <- df %>%
+  mutate(shape = ifelse(Pr.corrected > 0.05, "closed", "open"))
+df <- na.omit(df)
+
+# Create the plot
+p2 <- ggplot(df, aes(x = `Distance Class (Kilometers)`, y = `Mantel Correlation`)) +
+  geom_point(aes(shape = shape, size = .2)) +
+  scale_shape_manual(values=c(1, 16))+
+  geom_hline(yintercept = 0, color = "blue", linetype = "dashed") +
+  geom_path(color = "black") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(hjust = 0.5)) +
+  labs(x = "", y = "") + 
+  scale_x_continuous(breaks=seq(0, 1250, 200)) +
+  ylim(-0.06, 0.14 )  + 
+  theme(legend.position="none") + 
+  ggtitle("Subset microsatellites") + 
+    theme(plot.title = element_text(size = 13, margin=margin(0,0,20,0)), axis.text.x = element_text(color = "black"), 
+    axis.text.y = element_text(color = "black"))
+
+## SNP
+
+df <- as.data.frame(correlog_snp$mantel.res)
+df <- cbind(df$class.index, df$Mantel.cor, df$`Pr(corrected)`) %>% as.data.frame()
+colnames(df) <- c("Distance Class (Kilometers)", "Mantel Correlation", "Pr.corrected")
+
+# Add a new column for circle shape based on Pr(corrected)
+df <- df %>%
+  mutate(shape = ifelse(Pr.corrected > 0.05, "closed", "open"))
+df <- na.omit(df)
+
+# Create the plot
+p3 <- ggplot(df, aes(x = `Distance Class (Kilometers)`, y = `Mantel Correlation`)) +
+  geom_point(aes(shape = shape, size = .2)) +
+  scale_shape_manual(values=c(1, 16))+
+  geom_hline(yintercept = 0, color = "blue", linetype = "dashed") +
+  geom_path(color = "black") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(hjust = 0.5)) +
+  labs(x = "", y = "") + 
+  scale_x_continuous(breaks=seq(0, 1250, 200)) +
+  ylim(-0.06, 0.14 )  + 
+  theme(legend.position="none") + 
+  ggtitle("SNPs") + 
+    theme(plot.title = element_text(size = 13, margin=margin(0,0,20,0)), axis.text.x = element_text(color = "black"), 
+    axis.text.y = element_text(color = "black"))
+
+
+
+
+jpeg(filename = "output/mantel_correlogram.jpg",
+     width = 30, height = 8, units = "cm", res = 300, quality = 300, pointsize = 12)
+
+grid.arrange(p1, p2, p3, ncol=3, left = "Mantel Correlation", bottom = "Distance Class (km)")
+
+dev.off()
+```
