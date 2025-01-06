@@ -1,0 +1,477 @@
+---
+title: "GD_Fst"
+author: "Elise Stacy"
+date: "2025-01-05"
+output: html_document
+---
+# Load packages
+```{r warning = FALSE, message = FALSE}
+library(vcfR)
+library(adegenet)
+library(vegan)
+library(hierfstat)
+
+library(ggplot2)
+library(cowplot)
+library(dplyr)
+library(reshape2)
+library(stringr)
+```
+# Load data
+```{r warning = FALSE, message = FALSE}
+# All sample data
+msat_df <- read.csv("Microsatellites/data/gulo_msat_related_removed.csv")
+sample_data <- read.csv("all_samples.csv")
+
+#reformat for genind import
+out <- msat_df[1]
+out[paste("locus",1:12)] <- lapply(seq(2, ncol(msat_df), 2), function(i) do.call(paste, msat_df[i:(i+1)]))
+msat_df_re <- out
+ 
+msat_genind <- df2genind(msat_df_re[2:13], ind.names = msat_df_re$ID, NA.char = "-1", sep =" ")
+
+msat_metadata <- sample_data %>% filter(ID %in% indNames(msat_genind)) %>% arrange(match(ID, indNames(msat_genind)))
+
+msat_genind$pop <- as.factor(msat_metadata$Region)
+msat_genpop <- seppop(msat_genind) #separates into populations and orders alphabetically
+msat_genind <- repool(msat_genpop) #recombines with new order 
+
+# SNP data
+snp_vcf <- read.vcfR("SNPs/data/AK_YK/051923_iterative_filtering/outliers_removed/gulo_snp_related_removed.vcf")
+snp_genind <- vcfR2genind(snp_vcf)
+
+indNames(snp_genind) <- str_extract(indNames(snp_genind), ".*(?=_)")
+
+snp_metadata <- sample_data %>% filter(ID %in% indNames(snp_genind)) %>% arrange(match(ID, indNames(snp_genind)))
+
+snp_genind$pop <- as.factor(snp_metadata$Region)
+
+snp_genpop <- seppop(snp_genind) #separates into populations and orders alphabetically
+snp_genind <- repool(snp_genpop) #recombines with new order 
+
+# Subset msat data to match snp genotyped samples
+msat_sub_genind <- msat_genind[indNames(snp_genind), ]
+
+# For structure, Fst and He ordering
+region_order <- c("North Alaska","West Alaska", "Kenai Peninsula","Central Alaska","Northeast Alaska","North Yukon", "South Yukon", "Southeast Alaska")
+```
+## Fst between regions
+### Compute Fst
+```{r eval=FALSE}
+# Compute pairwise Fst (Weir & Cockerham 1984) 
+msat_fst = genet.dist(msat_genind, method = "WC84") %>% round(digits = 3)
+
+# Compute pairwise Fst (Weir & Cockerham 1984) 
+snp_fst = genet.dist(snp_genind, method = "WC84") %>% round(digits = 3)
+
+# Compute pairwise Fst (Weir & Cockerham 1984) 
+msat_sub_fst = genet.dist(msat_sub_genind, method = "WC84") %>% round(digits = 3)
+```
+### View pairwise Fst 
+```{r warning = FALSE, message = FALSE}
+msat_fst_df <- msat_fst %>% as.matrix() %>% as.data.frame()
+snp_fst_df <- snp_fst %>% as.matrix() %>% as.data.frame()
+msat_sub_fst_df <- msat_sub_fst %>% as.matrix() %>% as.data.frame()
+
+msat_fst_df
+snp_fst_df
+msat_sub_fst_df
+
+# Desired order of labels
+lab_order_map <- region_order
+
+msat_fst_df = msat_fst_df[lab_order_map, ]
+msat_fst_df = msat_fst_df[, lab_order_map]
+
+snp_fst_df = snp_fst_df[lab_order_map, ]
+snp_fst_df = snp_fst_df[, lab_order_map]
+
+msat_sub_fst_df = msat_sub_fst_df[lab_order_map, ]
+msat_sub_fst_df = msat_sub_fst_df[, lab_order_map]
+```
+### Create pairwise Fst plots
+```{r warning = FALSE, message = FALSE}
+# Microsat
+
+# Change order of rows and cols
+fst.mat = as.matrix(msat_fst)
+fst.mat1 = fst.mat[lab_order_map, ]
+fst.mat2 = fst.mat1[, lab_order_map]
+
+# Create a data.frame
+ind = which(upper.tri(fst.mat2), arr.ind = TRUE)
+fst.df = data.frame(Site1 = dimnames(fst.mat2)[[2]][ind[,2]],
+                    Site2 = dimnames(fst.mat2)[[1]][ind[,1]],
+                    Fst = fst.mat2[ ind ])
+
+# Keep the order of the levels in the data.frame for plotting 
+fst.df$Site1 = factor(fst.df$Site1, levels = unique(fst.df$Site1))
+fst.df$Site2 = factor(fst.df$Site2, levels = unique(fst.df$Site2))
+
+# Convert minus values to zero
+fst.df$Fst[fst.df$Fst < 0] = 0
+
+# Print data.frame summary
+fst.df %>% str
+
+# Fst italic label
+fst.label = expression(italic("F")[ST])
+
+# Extract middle Fst value for gradient argument
+mid = max(fst.df$Fst) / 2
+
+# Plot heatmap
+msat_Fst_heatmap <- ggplot(data = fst.df, aes(x = Site1, y = Site2, fill = Fst))+
+  geom_tile(colour = "black")+
+  geom_text(aes(label = Fst), color="black", size = 3)+
+  scale_fill_gradient2(low = "blue", mid = "pink", high = "red", midpoint = mid, name = fst.label, limits = c(0, max(fst.df$Fst)), breaks = c(0, 0.10, 0.20, 0.30))+
+  scale_x_discrete(expand = c(0,0))+
+  scale_y_discrete(expand = c(0,0), position = "right")+
+  theme(axis.text = element_text(colour = "black", size = 10, face = "bold"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        axis.title = element_blank(),
+        panel.grid = element_blank(),
+        panel.background = element_blank(),
+        legend.position = "right",
+        legend.title = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 10)
+        ) +
+  ggtitle("Microsatellite Fst")
+
+# SNP
+
+# Change order of rows and cols
+fst.mat = as.matrix(snp_fst)
+fst.mat1 = fst.mat[lab_order_map, ]
+fst.mat2 = fst.mat1[, lab_order_map]
+
+# Create a data.frame
+ind = which(upper.tri(fst.mat2), arr.ind = TRUE)
+fst.df = data.frame(Site1 = dimnames(fst.mat2)[[2]][ind[,2]],
+                    Site2 = dimnames(fst.mat2)[[1]][ind[,1]],
+                    Fst = fst.mat2[ ind ])
+
+# Keep the order of the levels in the data.frame for plotting 
+fst.df$Site1 = factor(fst.df$Site1, levels = unique(fst.df$Site1))
+fst.df$Site2 = factor(fst.df$Site2, levels = unique(fst.df$Site2))
+
+# Convert minus values to zero
+fst.df$Fst[fst.df$Fst < 0] = 0
+
+# Print data.frame summary
+fst.df %>% str
+
+# Fst italic label
+fst.label = expression(italic("F")[ST])
+
+# Extract middle Fst value for gradient argument
+mid = max(fst.df$Fst) / 2
+
+# Plot heatmap
+snp_Fst_heatmap <- ggplot(data = fst.df, aes(x = Site1, y = Site2, fill = Fst))+
+  geom_tile(colour = "black")+
+  geom_text(aes(label = Fst), color="black", size = 3)+
+  scale_fill_gradient2(low = "blue", mid = "pink", high = "red", midpoint = mid, name = fst.label, limits = c(0, max(fst.df$Fst)), breaks = c(0, 0.10, 0.20, 0.30))+
+  scale_x_discrete(expand = c(0,0))+
+  scale_y_discrete(expand = c(0,0), position = "right")+
+  theme(axis.text = element_text(colour = "black", size = 10, face = "bold"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        axis.title = element_blank(),
+        panel.grid = element_blank(),
+        panel.background = element_blank(),
+        legend.position = "right",
+        legend.title = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 10)
+        ) +
+  ggtitle("SNP Fst")
+
+# Microsat subset
+# Desired order of labels
+lab_order_map <- region_order
+
+# Change order of rows and cols
+fst.mat = as.matrix(msat_sub_fst)
+fst.mat1 = fst.mat[lab_order_map, ]
+fst.mat2 = fst.mat1[, lab_order_map]
+
+# Create a data.frame
+ind = which(upper.tri(fst.mat2), arr.ind = TRUE)
+fst.df = data.frame(Site1 = dimnames(fst.mat2)[[2]][ind[,2]],
+                    Site2 = dimnames(fst.mat2)[[1]][ind[,1]],
+                    Fst = fst.mat2[ ind ])
+
+# Keep the order of the levels in the data.frame for plotting 
+fst.df$Site1 = factor(fst.df$Site1, levels = unique(fst.df$Site1))
+fst.df$Site2 = factor(fst.df$Site2, levels = unique(fst.df$Site2))
+
+# Convert minus values to zero
+fst.df$Fst[fst.df$Fst < 0] = 0
+
+# Print data.frame summary
+fst.df %>% str
+
+# Fst italic label
+fst.label = expression(italic("F")[ST])
+
+# Extract middle Fst value for gradient argument
+mid = max(fst.df$Fst) / 2
+
+# Plot heatmap
+msat_sub_Fst_heatmap <- ggplot(data = fst.df, aes(x = Site1, y = Site2, fill = Fst))+
+  geom_tile(colour = "black")+
+  geom_text(aes(label = Fst), color="black", size = 3)+
+  scale_fill_gradient2(low = "blue", mid = "pink", high = "red", midpoint = mid, name = fst.label, limits = c(0, max(fst.df$Fst)), breaks = c(0, 0.10, 0.20, 0.30))+
+  scale_x_discrete(expand = c(0,0))+
+  scale_y_discrete(expand = c(0,0), position = "right")+
+  theme(axis.text = element_text(colour = "black", size = 10, face = "bold"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        axis.title = element_blank(),
+        panel.grid = element_blank(),
+        panel.background = element_blank(),
+        legend.position = "right",
+        legend.title = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 10)
+        ) +
+  ggtitle("Microsatellite Subset Fst")
+
+```
+### Visualize side by side
+```{r, fig.dim = c(8, 6)}
+# Arrange the two plots side by side using cowplot's plot_grid()
+Fst_final_plot <- plot_grid(msat_Fst_heatmap, snp_Fst_heatmap, msat_sub_Fst_heatmap, ncol = 3)
+
+# Display the final_plot
+Fst_final_plot
+```
+### Fst Significance
+```{r warning = FALSE, message = FALSE}
+# Microsatellite
+msat_fst_boot <- boot.ppbetas(dat=msat_genind,nboot=999,quant=c(0.025,0.975),diploid=TRUE,digits=4)
+
+# SNP
+snp_fst_boot <- boot.ppbetas(dat=snp_genind,nboot=999,quant=c(0.025,0.975),diploid=TRUE,digits=4)
+
+# Microsatellite subset
+msat_sub_fst_boot <- boot.ppbetas(dat=msat_sub_genind,nboot=999,quant=c(0.025,0.975),diploid=TRUE,digits=4)
+```
+## View Fst significance
+```{r warning = FALSE, message = FALSE}
+msat_fst_boot[upper.tri(msat_fst_boot)] <- NA
+x <- melt(msat_fst_boot) %>% drop_na
+msat_signif <- x %>% filter(value > 0)  # if upper/lower bootstrap CI span 0 then not significant
+
+snp_fst_boot[upper.tri(snp_fst_boot)] <- NA
+x <- melt(snp_fst_boot) %>% drop_na
+snp_signif <- x %>% filter(value > 0)  # if upper/lower bootstrap CI span 0 then not significant
+
+msat_sub_fst_boot[upper.tri(msat_sub_fst_boot)] <- NA
+x <- melt(msat_sub_fst_boot) %>% drop_na
+msat_sub_signif <- x %>% filter(value > 0)  # if upper/lower bootstrap CI span 0 then not significant
+
+msat_signif
+snp_signif
+msat_sub_signif
+```
+## Genetic diversity by region
+### Calculate He by region
+```{r warning = FALSE, message = FALSE}
+msat_genpop <- genind2genpop(msat_genind)
+He_msat <- adegenet::Hs(msat_genpop) %>% as.data.frame()
+colnames(He_msat) <- c("He")
+
+snp_genpop <- genind2genpop(snp_genind)
+He_snp <- adegenet::Hs(snp_genpop) %>% as.data.frame()
+colnames(He_snp) <- c("He")
+
+msat_sub_genpop <- genind2genpop(msat_sub_genind)
+He_msat_sub <- adegenet::Hs(msat_sub_genpop) %>% as.data.frame()
+colnames(He_msat_sub) <- c("He")
+
+He_df <- cbind(He_msat, He_snp, He_msat_sub)
+  
+colnames(He_df) <- c("MSAT He","SNP He", "MSAT Subset He")
+```
+### Plot He
+```{r warning = FALSE, message = FALSE}
+He_msat_df <- tibble::rownames_to_column(He_msat, "Region")
+He_msat_df$N <- pop(msat_genind) %>% table()
+He_msat_df$Order <- c(4,3,5,1,6,8,2,7) 
+He_msat_df <- He_msat_df %>% arrange(Order)
+He_msat_df$Color <- c("#E5A1CC","#8DA8F6","#B89912","#393b79","#637939","#ECDD6C","#AB0478","#93E371")
+He_msat_df$Region_Samples <- paste(He_msat_df$Region, "n =", He_msat_df$N)
+
+# Create a barplot with individually specified colors
+He_msat_plot <- ggplot(He_msat_df, aes(reorder(x = Region_Samples, Order) , y = He, fill = Color)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Microsatellite Expected Heterozygosity", x = "", y = "He") +
+  scale_fill_identity() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+He_snp_df <- tibble::rownames_to_column(He_snp, "Region")
+He_snp_df$N <- pop(snp_genind) %>% table()
+He_snp_df$Order <- c(4,3,5,1,6,8,2,7) 
+He_snp_df <- He_snp_df %>% arrange(Order)
+He_snp_df$Color <- c("#E5A1CC","#8DA8F6","#B89912","#393b79","#637939","#ECDD6C","#AB0478","#93E371")
+He_snp_df$Region_Samples <- paste(He_snp_df$Region, "n =", He_snp_df$N)
+
+He_msat_sub_df <- tibble::rownames_to_column(He_msat_sub, "Region")
+He_msat_sub_df$N <- pop(msat_sub_genind) %>% table()
+He_msat_sub_df$Order <- c(4,3,5,1,6,8,2,7) 
+He_msat_sub_df <- He_msat_sub_df %>% arrange(Order)
+He_msat_sub_df$Color <- c("#E5A1CC","#8DA8F6","#B89912","#393b79","#637939","#ECDD6C","#AB0478","#93E371")
+He_msat_sub_df$Region_Samples <- paste(He_msat_sub_df$Region, "n =", He_msat_sub_df$N)
+
+# Create a barplot with individually specified colors
+He_msat_plot <- ggplot(He_msat_df, aes(reorder(x = Region_Samples, Order) , y = He, fill = Color)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Microsatellite Expected Heterozygosity", x = "", y = "He") +
+  scale_fill_identity() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+# Create a barplot with individually specified colors
+He_snp_plot <- ggplot(He_snp_df, aes(reorder(x = Region_Samples, Order) , y = He, fill = Color)) +
+  geom_bar(stat = "identity") +
+  labs(title = "SNP Expected Heterozygosity", x = "", y = "He") +
+  scale_fill_identity() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+# Create a barplot with individually specified colors
+He_msat_sub_plot <- ggplot(He_msat_sub_df, aes(reorder(x = Region_Samples, Order) , y = He, fill = Color)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Microsatellite Subset Expected Heterozygosity", x = "", y = "He") +
+  scale_fill_identity() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plot_grid(He_msat_plot, He_snp_plot, He_msat_sub_plot, ncol = 3)
+```
+### He significance
+#### Divide datasets by pop/region
+```{r warning = FALSE, message = FALSE}
+msat_NA_genind <- msat_genind[pop="North Alaska"]
+msat_WA_genind <- msat_genind[pop="West Alaska"]
+msat_KP_genind <- msat_genind[pop="Kenai Peninsula"]
+msat_CA_genind <- msat_genind[pop="Central Alaska"]
+msat_NE_genind <- msat_genind[pop="Northeast Alaska"]
+msat_NY_genind <- msat_genind[pop="North Yukon"]
+msat_SY_genind <- msat_genind[pop="South Yukon"]
+msat_SA_genind <- msat_genind[pop="Southeast Alaska"]
+
+snp_NA_genind <- snp_genind[pop="North Alaska"]
+snp_WA_genind <- snp_genind[pop="West Alaska"]
+snp_KP_genind <- snp_genind[pop="Kenai Peninsula"]
+snp_CA_genind <- snp_genind[pop="Central Alaska"]
+snp_NE_genind <- snp_genind[pop="Northeast Alaska"]
+snp_NY_genind <- snp_genind[pop="North Yukon"]
+snp_SY_genind <- snp_genind[pop="South Yukon"]
+snp_SA_genind <- snp_genind[pop="Southeast Alaska"]
+
+msat_sub_NA_genind <- msat_sub_genind[pop="North Alaska"]
+msat_sub_WA_genind <- msat_sub_genind[pop="West Alaska"]
+msat_sub_KP_genind <- msat_sub_genind[pop="Kenai Peninsula"]
+msat_sub_CA_genind <- msat_sub_genind[pop="Central Alaska"]
+msat_sub_NE_genind <- msat_sub_genind[pop="Northeast Alaska"]
+msat_sub_NY_genind <- msat_sub_genind[pop="North Yukon"]
+msat_sub_SY_genind <- msat_sub_genind[pop="South Yukon"]
+msat_sub_SA_genind <- msat_sub_genind[pop="Southeast Alaska"]
+```
+#### All regions vs the total
+```{r eval=FALSE}
+# Microsats
+NA_Hstest_msat <- Hs.test(msat_NA_genind, msat_genind, n.sim = 499, alter = "two-sided")
+WA_Hstest_msat <- Hs.test(msat_WA_genind, msat_genind, n.sim = 499, alter = "two-sided")
+CA_Hstest_msat <- Hs.test(msat_CA_genind, msat_genind, n.sim = 499, alter = "two-sided")
+KP_Hstest_msat <- Hs.test(msat_KP_genind, msat_genind, n.sim = 499, alter = "two-sided")
+NE_Hstest_msat <- Hs.test(msat_NE_genind, msat_genind, n.sim = 499, alter = "two-sided")
+NY_Hstest_msat <- Hs.test(msat_NY_genind, msat_genind, n.sim = 499, alter = "two-sided")
+SY_Hstest_msat <- Hs.test(msat_YS_genind, msat_genind, n.sim = 499, alter = "two-sided")
+SA_Hstest_msat <- Hs.test(msat_SA_genind, msat_genind, n.sim = 499, alter = "two-sided")
+
+list_of_Hstests_region_vs_all_msat <- list(NA_Hstest_msat, WA_Hstest_msat, KP_Hstest_msat, CA_Hstest_msat, NE_Hstest_msat, NY_Hstest_msat, SY_Hstest_msat, SA_Hstest_msat)
+
+# SNPs
+NA_Hstest_snp <- Hs.test(snp_NA_genind, snp_genind, n.sim = 499, alter = "two-sided")
+WA_Hstest_snp <- Hs.test(snp_WA_genind, snp_genind, n.sim = 499, alter = "two-sided")
+CA_Hstest_snp <- Hs.test(snp_CA_genind, snp_genind, n.sim = 499, alter = "two-sided")
+KP_Hstest_snp <- Hs.test(snp_KP_genind, snp_genind, n.sim = 499, alter = "two-sided")
+NE_Hstest_snp <- Hs.test(snp_NE_genind, snp_genind, n.sim = 499, alter = "two-sided")
+NY_Hstest_snp <- Hs.test(snp_NY_genind, snp_genind, n.sim = 499, alter = "two-sided")
+SY_Hstest_snp <- Hs.test(snp_YS_genind, snp_genind, n.sim = 499, alter = "two-sided") #run from here
+SA_Hstest_snp <- Hs.test(snp_SA_genind, snp_genind, n.sim = 499, alter = "two-sided")
+
+list_of_Hstests_region_vs_all_snp <- list(NA_Hstest_snp, WA_Hstest_snp, KP_Hstest_snp, CA_Hstest_snp, NE_Hstest_snp, NY_Hstest_snp, SY_Hstest_snp, SA_Hstest_snp)
+
+# Microsats subset
+NA_Hstest_msat_sub <- Hs.test(msat_sub_NA_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+WA_Hstest_msat_sub <- Hs.test(msat_sub_WA_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+CA_Hstest_msat_sub <- Hs.test(msat_sub_CA_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+KP_Hstest_msat_sub <- Hs.test(msat_sub_KP_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+NE_Hstest_msat_sub <- Hs.test(msat_sub_NE_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+NY_Hstest_msat_sub <- Hs.test(msat_sub_NY_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+SY_Hstest_msat_sub <- Hs.test(msat_sub_YS_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+SA_Hstest_msat_sub <- Hs.test(msat_sub_SA_genind, msat_sub_genind, n.sim = 499, alter = "two-sided")
+
+list_of_Hstests_region_vs_all_msat_sub <- list(NA_Hstest_msat_sub, WA_Hstest_msat_sub, KP_Hstest_msat_sub, CA_Hstest_msat_sub, NE_Hstest_msat_sub, NY_Hstest_msat_sub, SY_Hstest_msat_sub, SA_Hstest_msat_sub)
+```
+## View Hs test results
+```{r warning = FALSE, message = FALSE}
+results_list <- list_of_Hstests_region_vs_all_msat
+msat_hs_test <- data.frame()
+
+for (result in results_list) {
+msat_hs_test <- rbind(msat_hs_test, data.frame( data = as.character(result$call$x),
+                            observation = result$obs,
+                            pvalue = result$pvalue,
+                            variance = result$expvar[3]))
+}
+
+results_list <- list_of_Hstests_region_vs_all_snp
+snp_hs_test <- data.frame()
+
+for (result in results_list) {
+snp_hs_test <- rbind(snp_hs_test, data.frame( data = as.character(result$call$x),
+                            observation = result$obs,
+                            pvalue = result$pvalue,
+                            variance = result$expvar[3]))
+}
+
+results_list <- list_of_Hstests_region_vs_all_msat_sub
+msat_sub_hs_test <- data.frame()
+
+for (result in results_list) {
+msat_sub_hs_test <- rbind(msat_sub_hs_test, data.frame( data = as.character(result$call$x),
+                            observation = result$obs,
+                            pvalue = result$pvalue,
+                            variance = result$expvar[3]))
+}
+
+
+msat_hs_test
+snp_hs_test
+msat_sub_hs_test
+
+msat_hs_test %>% filter(pvalue <= 0.00625)  # bonferonni alpha would be 0.05/8 = 0.00625
+snp_hs_test %>% filter(pvalue <= 0.00625) # bonferonni alpha would be 0.05/8 = 0.00625
+msat_sub_hs_test %>% filter(pvalue <= 0.00625)
+
+He_df <- data.frame()
+
+He_df <- cbind(rownames(He_msat),He_msat$He, He_snp$He, He_msat_sub$He) %>% as.data.frame()
+
+He_df <- He_df[match(region_order, He_df$V1),]
+
+He_df <- cbind(He_df$V1, He_msat_df$N, He_df$V2, msat_hs_test$pvalue, He_snp_df$N, He_df$V3,snp_hs_test$pvalue,  He_msat_sub_df$N, He_df$V4, msat_sub_hs_test$pvalue) %>% as.data.frame()
+  
+colnames(He_df) <- c("Region","MSAT n=","MSAT He","MSAT P-value","SNP n=","SNP He","SNP P-value","MSAT Subset n=","MSAT Subset He","MSAT Subset P-value")
+
+He_df
+
+He_msat_total <- sum(He_msat_df$He * He_msat_df$N)/sum(He_msat_df$N)
+He_snp_total <- sum(He_snp_df$He * He_snp_df$N)/sum(He_snp_df$N)
+He_msat_sub_total <- sum(He_msat_sub_df$He * He_msat_sub_df$N)/sum(He_msat_sub_df$N)
+
+total <- cbind("Total",501,He_msat_total,"NA",201,He_snp_total,"NA",201,He_msat_total,"NA") %>% as.data.frame()
+
+colnames(total) <- c("Region","MSAT n=","MSAT He","MSAT P-value","SNP n=","SNP He","SNP P-value","MSAT Subset n=","MSAT Subset He","MSAT Subset P-value")
+
+He_df <- rbind(total, He_df)
+```
