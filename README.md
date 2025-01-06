@@ -21,8 +21,7 @@ snp_outliers_Ho_removed.RMD
 ### Microsatellite loci linkage disequilibrium and Hardy-weinberg equilibrium
 LD_HWE.RMD
 ### PCA calculation and STRUCTURE results visualization
-Structure results files available upon request
-PCA_Structure_visualization.RMD
+PCA_Structure_visualization.RMD, to produce structure plots, structure results files available upon request
 ### Genetic Diversity and Fst
 GD_Fst.RMD
 ### Isolation by distance mantel tests
